@@ -1,0 +1,12 @@
+Os áudios separados por stem (drums.ogg, bass.ogg, guitar.ogg, vocals.ogg, other.ogg)
+gerados pelo Demucs a partir de dados/original/ não estão incluídos neste
+repositório por conta do tamanho (>10 GB) e dos direitos autorais.
+
+Link para download:
+[INSERIR LINK AQUI]
+
+Como gerar localmente (em vez de baixar):
+  python dados/organizar_dataset.py
+
+  Isso roda o Demucs htdemucs_6s sobre cada música em dados/original/
+  e salva os stems em dados/pre_dataset/<Nome da Música>/

@@ -1,0 +1,13 @@
+Os arquivos de exemplo (áudio de uma música completa para teste rápido do pipeline)
+não estão incluídos neste repositório por conta do tamanho e dos direitos autorais.
+
+Link para download:
+[INSERIR LINK AQUI]
+
+Como usar após o download:
+  Coloque o arquivo de áudio nesta pasta (dados/exemplo/) e execute:
+
+    python main.py --audio dados/exemplo/<arquivo.mp3>
+
+  O pipeline vai separar os stems, rodar os modelos treinados e gerar
+  o chart em resultados/novas_musicas/charts/<nome_da_musica>/

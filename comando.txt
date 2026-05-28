@@ -1,0 +1,14 @@
+Me manda os logs finais (tail das epocas + secao 7.5) dos 4 quando acordar.
+
+cd ~/playsic
+
+nohup bash -c '
+for nb in drums bass guitar vocals; do
+  echo "=== $(date) — iniciando $nb ==="
+  jupyter nbconvert --to notebook --execute --inplace \
+    treinamento/treinamento_modelo_${nb}.ipynb
+  echo "=== $(date) — $nb concluído ==="
+done
+' > treinamento_log.txt 2>&1 &
+
+echo "PID: $!  — acompanhe com: tail -f treinamento_log.txt"

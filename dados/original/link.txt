@@ -1,0 +1,11 @@
+Os arquivos de áudio originais (MP3/OGG/FLAC dos charts do Clone Hero)
+não estão incluídos neste repositório por conta do tamanho (>10 GB) e
+dos direitos autorais.
+
+Link para download:
+[INSERIR LINK AQUI]
+
+Como organizar após o download:
+  - Descompacte o arquivo nesta pasta (dados/original/)
+  - A estrutura esperada é: dados/original/<Nome da Banda - Nome da Música>/
+  - Cada subpasta deve conter o arquivo de áudio (ex: song.ogg, song.mp3)

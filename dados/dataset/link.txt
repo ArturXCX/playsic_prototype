@@ -1,0 +1,20 @@
+O dataset de treinamento completo (stems de áudio + anotações MIDI em .xlsx,
+organizados por música e instrumento) não está incluído neste repositório
+por conta do tamanho (>10 GB) e dos direitos autorais.
+
+Link para download:
+[INSERIR LINK AQUI]
+
+Estrutura esperada após o download:
+  dados/dataset/<Nome da Música>/
+    drums.ogg
+    bass.ogg
+    guitar.ogg
+    vocals.ogg
+    other.ogg
+    notes.xlsx      ← anotações MIDI por instrumento
+
+Como gerar localmente (em vez de baixar):
+  1. Popule dados/original/ com os charts do Clone Hero
+  2. Execute dados/organizar_dataset.py para gerar dados/pre_dataset/
+  3. Execute o script de montagem do dataset (ver README.md)

@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.pytest_cache/
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+
+# Pasta de experimentos e workspace Claude
+experimentos/
+.claude/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Logs de execução
+treinamento_log.txt
+*.log
+
+# ── Dados com direitos autorais ───────────────────────────────────────────────
+# Conteúdo excluído por tamanho (>10 GB) e direitos autorais.
+# Cada pasta contém um link.txt com instruções de download.
+dados/original/**
+!dados/original/link.txt
+
+dados/pre_dataset/**
+!dados/pre_dataset/link.txt
+
+dados/dataset/**
+!dados/dataset/link.txt
+
+dados/exemplo/**
+!dados/exemplo/link.txt
+
+# Onyx binário
+onyx/file/*
+!onyx/file/.gitkeep
+onyx/onyx_extracted/
+onyx/squashfs-root/
+
+# Modelos treinados e logs de treino
+treinamento/checkpoint/*/*
+treinamento/logs/*/*
+treinamento/modelos/*
+treinamento/validação/*/*
+!treinamento/checkpoint/*/.gitkeep
+!treinamento/logs/*/.gitkeep
+!treinamento/modelos/.gitkeep
+!treinamento/validação/*/.gitkeep
+
+# Resultados de inferência (gerados a partir de músicas com direitos autorais)
+resultados/novas_musicas/charts/*/
+resultados/novas_musicas/previews/*/
+resultados/dataset_validacao/charts/*/
+resultados/dataset_validacao/previews/*/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

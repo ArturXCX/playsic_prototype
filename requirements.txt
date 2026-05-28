@@ -1,0 +1,28 @@
+# Áudio
+demucs>=4.0.0
+lameenc>=1.7.0
+soundfile>=0.12.0
+torchaudio>=2.0.0
+
+# MIDI / planilhas
+mido>=1.3.0
+openpyxl>=3.1.0
+
+# Metadados de áudio
+mutagen>=1.47.0
+
+# Imagem (placeholder de álbum)
+Pillow>=10.0.0
+
+# Deep learning
+torch>=2.0.0
+numpy>=1.24.0
+torchcodec>=0.1.0
+
+# Treinamento e análise
+matplotlib>=3.7.0
+tqdm>=4.65.0
+jupyter>=1.0.0
+
+nbconvert 
+ipykernel
