@@ -79,7 +79,11 @@ SUPPORTED_INSTRUMENTS = {"drums", "rhythm", "guitar", "vocals"}
 # ─────────────────────────────────────────────────────────────────────────────
 def _load_drums_model(model_path: Path, meta_path: Path,
                       device: torch.device) -> tuple[DrumCRNN, Dict[str, Any]]:
-    meta = torch.load(str(meta_path), map_location="cpu")
+    meta: Dict[str, Any] = {}
+    if meta_path.exists():
+        meta = torch.load(str(meta_path), map_location="cpu")
+    else:
+        log.warning("meta.pt não encontrado (%s) — usando defaults (treinamento em andamento?)", meta_path.name)
     n_mels = int(meta.get("n_mels", 128))
 
     model = DrumCRNN(n_mels=n_mels).to(device)
@@ -104,9 +108,7 @@ def _infer_drums(audio_path: Path,
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model, meta = _load_drums_model(model_path, meta_path, device)
-    mel_mean = float(meta["mel_mean"])
-    mel_std  = float(meta["mel_std"])
-    n_mels   = int(meta.get("n_mels", 128))
+    n_mels = int(meta.get("n_mels", 128))
 
     if thresholds is None:
         thresholds = meta.get("optimal_thresholds", 0.5)
@@ -125,7 +127,11 @@ def _infer_drums(audio_path: Path,
 
     # mel + forward
     mel = audio_to_grid_mel(audio_path, bpm, n_steps, n_mels=n_mels)
-    mel = normalize_mel(mel, mel_mean, mel_std).unsqueeze(0).to(device)
+    if "mel_mean" in meta and "mel_std" in meta:
+        mel = normalize_mel(mel, float(meta["mel_mean"]), float(meta["mel_std"])).unsqueeze(0).to(device)
+    else:
+        # Sem meta de treinamento: normaliza por-música (zero-mean / unit-std)
+        mel = normalize_mel(mel, mel.mean().item(), mel.std().item()).unsqueeze(0).to(device)
     logits = model(mel)
     probs  = torch.sigmoid(logits).squeeze(0).cpu().numpy()
     preds  = (probs >= thr[None, :]).astype(np.float32)
@@ -148,7 +154,11 @@ def _infer_drums(audio_path: Path,
 # ─────────────────────────────────────────────────────────────────────────────
 def _load_rhythm_model(model_path: Path, meta_path: Path,
                        device: torch.device) -> tuple[BassRhythmCRNN, Dict[str, Any]]:
-    meta = torch.load(str(meta_path), map_location="cpu")
+    meta: Dict[str, Any] = {}
+    if meta_path.exists():
+        meta = torch.load(str(meta_path), map_location="cpu")
+    else:
+        log.warning("meta.pt não encontrado (%s) — usando defaults (treinamento em andamento?)", meta_path.name)
     n_mels = int(meta.get("n_mels", 128))
 
     model = BassRhythmCRNN(n_mels=n_mels).to(device)
@@ -170,9 +180,7 @@ def _infer_rhythm(audio_path: Path,
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model, meta = _load_rhythm_model(model_path, meta_path, device)
-    mel_mean = float(meta["mel_mean"])
-    mel_std  = float(meta["mel_std"])
-    n_mels   = int(meta.get("n_mels", 128))
+    n_mels = int(meta.get("n_mels", 128))
 
     if thresholds is None:
         thresholds = meta.get("optimal_thresholds", 0.5)
@@ -188,7 +196,10 @@ def _infer_rhythm(audio_path: Path,
     n_steps = n_steps_override or (int(audio_secs / step_duration_seconds(bpm)) + 1)
 
     mel = audio_to_grid_mel(audio_path, bpm, n_steps, n_mels=n_mels)
-    mel = normalize_mel(mel, mel_mean, mel_std).unsqueeze(0).to(device)
+    if "mel_mean" in meta and "mel_std" in meta:
+        mel = normalize_mel(mel, float(meta["mel_mean"]), float(meta["mel_std"])).unsqueeze(0).to(device)
+    else:
+        mel = normalize_mel(mel, mel.mean().item(), mel.std().item()).unsqueeze(0).to(device)
     logits = model(mel)
     probs  = torch.sigmoid(logits).squeeze(0).cpu().numpy()
     preds  = (probs >= thr[None, :]).astype(np.float32)
@@ -210,7 +221,11 @@ def _infer_rhythm(audio_path: Path,
 # ─────────────────────────────────────────────────────────────────────────────
 def _load_guitar_model(model_path: Path, meta_path: Path,
                        device: torch.device) -> tuple[GuitarCRNN, Dict[str, Any]]:
-    meta = torch.load(str(meta_path), map_location="cpu")
+    meta: Dict[str, Any] = {}
+    if meta_path.exists():
+        meta = torch.load(str(meta_path), map_location="cpu")
+    else:
+        log.warning("meta.pt não encontrado (%s) — usando defaults (treinamento em andamento?)", meta_path.name)
     n_mels = int(meta.get("n_mels", 128))
 
     model = GuitarCRNN(n_mels=n_mels).to(device)
@@ -232,9 +247,7 @@ def _infer_guitar(audio_path: Path,
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model, meta = _load_guitar_model(model_path, meta_path, device)
-    mel_mean = float(meta["mel_mean"])
-    mel_std  = float(meta["mel_std"])
-    n_mels   = int(meta.get("n_mels", 128))
+    n_mels = int(meta.get("n_mels", 128))
 
     if thresholds is None:
         thresholds = meta.get("optimal_thresholds", 0.5)
@@ -250,7 +263,10 @@ def _infer_guitar(audio_path: Path,
     n_steps = n_steps_override or (int(audio_secs / step_duration_seconds(bpm)) + 1)
 
     mel = audio_to_grid_mel(audio_path, bpm, n_steps, n_mels=n_mels)
-    mel = normalize_mel(mel, mel_mean, mel_std).unsqueeze(0).to(device)
+    if "mel_mean" in meta and "mel_std" in meta:
+        mel = normalize_mel(mel, float(meta["mel_mean"]), float(meta["mel_std"])).unsqueeze(0).to(device)
+    else:
+        mel = normalize_mel(mel, mel.mean().item(), mel.std().item()).unsqueeze(0).to(device)
     logits = model(mel)
     probs  = torch.sigmoid(logits).squeeze(0).cpu().numpy()
     preds  = (probs >= thr[None, :]).astype(np.float32)
@@ -272,7 +288,11 @@ def _infer_guitar(audio_path: Path,
 # ─────────────────────────────────────────────────────────────────────────────
 def _load_vocals_model(model_path: Path, meta_path: Path,
                        device: torch.device) -> tuple[VocalsCRNN, Dict[str, Any]]:
-    meta = torch.load(str(meta_path), map_location="cpu")
+    meta: Dict[str, Any] = {}
+    if meta_path.exists():
+        meta = torch.load(str(meta_path), map_location="cpu")
+    else:
+        log.warning("meta.pt não encontrado (%s) — usando defaults (treinamento em andamento?)", meta_path.name)
     n_mels = int(meta.get("n_mels", 128))
 
     model = VocalsCRNN(n_mels=n_mels).to(device)
@@ -294,9 +314,7 @@ def _infer_vocals(audio_path: Path,
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model, meta = _load_vocals_model(model_path, meta_path, device)
-    mel_mean = float(meta["mel_mean"])
-    mel_std  = float(meta["mel_std"])
-    n_mels   = int(meta.get("n_mels", 128))
+    n_mels = int(meta.get("n_mels", 128))
 
     if thresholds is None:
         thresholds = meta.get("optimal_thresholds", 0.5)
@@ -312,7 +330,10 @@ def _infer_vocals(audio_path: Path,
     n_steps = n_steps_override or (int(audio_secs / step_duration_seconds(bpm)) + 1)
 
     mel = audio_to_grid_mel(audio_path, bpm, n_steps, n_mels=n_mels)
-    mel = normalize_mel(mel, mel_mean, mel_std).unsqueeze(0).to(device)
+    if "mel_mean" in meta and "mel_std" in meta:
+        mel = normalize_mel(mel, float(meta["mel_mean"]), float(meta["mel_std"])).unsqueeze(0).to(device)
+    else:
+        mel = normalize_mel(mel, mel.mean().item(), mel.std().item()).unsqueeze(0).to(device)
     logits = model(mel)
     probs  = torch.sigmoid(logits).squeeze(0).cpu().numpy()
     preds  = (probs >= thr[None, :]).astype(np.float32)

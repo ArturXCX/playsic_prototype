@@ -24,5 +24,22 @@ matplotlib>=3.7.0
 tqdm>=4.65.0
 jupyter>=1.0.0
 
-nbconvert 
+nbconvert
 ipykernel
+librosa
+
+# ── Transcrição áudio→MIDI (basic-pitch, backend ONNX) ────────────────────────
+# Usada para guitar/bass/vocals no main.py (instrumentos afinados).
+# basic-pitch fixa numpy<1.24 (não compila no Python 3.12), então instale-o
+# SEM as deps e forneça os runtimes compatíveis manualmente:
+#
+#   pip install onnxruntime pretty_midi mir_eval resampy
+#   pip install --no-deps basic-pitch
+#
+# IMPORTANTE: instale na MESMA venv em que roda o main.py (não no Python do sistema).
+# O backend ONNX (nmp.onnx já vem no pacote) não usa TensorFlow.
+onnxruntime>=1.16.0
+pretty_midi>=0.2.10
+mir_eval>=0.7
+resampy>=0.4.2          # basic_pitch.note_creation importa no topo
+# basic-pitch  →  instalar com --no-deps (ver acima)

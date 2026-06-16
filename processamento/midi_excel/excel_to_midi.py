@@ -47,16 +47,18 @@ SHEET_TO_TRACK = {
 # ─────────────────────────────────────────────────────────────────────────────
 # Remapeamento de notas de drums para Clone Hero (4 dificuldades)
 # ─────────────────────────────────────────────────────────────────────────────
-# O modelo usa as notas de anotação do Rock Band (24–31) como referência.
-# Clone Hero requer notas por faixa de dificuldade para que o chart seja jogável:
+# O modelo usa as notas de anotação (24=Kick,26=Snare,27=Yellow,30=Blue,31=Green).
+# Convertemos para a convenção OFICIAL de drums do Clone Hero/YARG (4-lane), em que
+# CADA dificuldade tem: Kick, Red(snare), Yellow, Blue, Green em pitches consecutivos:
 #   Easy 60-64 | Medium 72-76 | Hard 84-88 | Expert 96-100
-# O Kick (nota 24) é cross-dificuldade — permanece igual em todos os níveis.
-_DRUMS_KICK_NOTE = 24
+#   (Kick=60/72/84/96, Snare=61/73/85/97, Yellow=62/74/86/98, Blue=63/75/87/99, Green=64/76/88/100)
+# Antes o kick ficava na nota 24 (fora do range jogável) e os pads estavam deslocados.
 _DRUMS_PAD_TO_DIFFICULTIES: Dict[int, List[int]] = {
-    26: [60, 72, 84, 96],   # Red / Snare:     Easy → Expert
-    27: [61, 73, 85, 97],   # Yellow / Hi-hat: Easy → Expert
-    30: [62, 74, 86, 98],   # Blue / Tom:      Easy → Expert
-    31: [63, 75, 87, 99],   # Green / Crash:   Easy → Expert
+    24: [60, 72, 84, 96],    # Kick
+    26: [61, 73, 85, 97],    # Snare (Red)
+    27: [62, 74, 86, 98],    # Yellow (hi-hat)
+    30: [63, 75, 87, 99],    # Blue (tom)
+    31: [64, 76, 88, 100],   # Green (crash)
 }
 
 # Guitar / Bass (rhythm): o modelo é treinado nas notas Expert (96-100).
@@ -73,6 +75,76 @@ _RHYTHM_FRET_TO_DIFFICULTIES: Dict[int, List[int]] = {
 
 # Guitar lead: mesma estrutura do rhythm (5 frets, mesmas notas Expert).
 _GUITAR_FRET_TO_DIFFICULTIES: Dict[int, List[int]] = dict(_RHYTHM_FRET_TO_DIFFICULTIES)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Redução por dificuldade (Easy < Medium < Hard < Expert)
+# ─────────────────────────────────────────────────────────────────────────────
+# O esquema antigo COPIAVA o Expert idêntico para os 4 níveis — Easy ficava tão
+# denso quanto Expert (injogável). Um chart de verdade (e o que o Onyx faz na
+# conversão) gera cada nível inferior como um SUBCONJUNTO afinado do Expert:
+# menos notas (espaçamento rítmico maior) + acordes simplificados.
+#
+# índice 0=Easy, 1=Medium, 2=Hard, 3=Expert  →  (espaçamento mínimo em beats,
+# nº máx. de notas simultâneas).
+_DIFFICULTY_PARAMS = [
+    (0, 1.5,   1),   # Easy:   >= 1.5 beats entre notas, sem acordes
+    (1, 0.75,  1),   # Medium: >= 3/4 de beat, sem acordes
+    (2, 0.375, 2),   # Hard:   >= 3/8 de beat (remove 16ths/tercinas), até 2 notas
+    (3, 0.0,   99),  # Expert: tudo (idêntico à entrada)
+]
+
+# Prioridade ao cortar acordes nos níveis baixos (menor = mantido primeiro).
+# Guitar/bass: mantém o fret mais grave (nota Expert menor = Green/Red).
+def _fret_chord_priority(expert_note: int) -> int:
+    return expert_note
+
+# Drums: mantém o backbone (kick → caixa → chimbal → tom → prato) ao simplificar.
+_DRUM_PRIORITY = {24: 0, 26: 1, 27: 2, 30: 3, 31: 4}
+def _drum_chord_priority(expert_note: int) -> int:
+    return _DRUM_PRIORITY.get(expert_note, 9)
+
+
+def _reduce_to_difficulties(notes: List[Dict[str, Any]],
+                            ticks_per_beat: int,
+                            expert_map: Dict[int, List[int]],
+                            chord_priority) -> List[Dict[str, Any]]:
+    """Gera as 4 dificuldades a partir das notas Expert, com densidade decrescente.
+
+    Args:
+        notes:          notas no range Expert (ex.: 96-100 p/ frets, 26-31 p/ pads)
+        ticks_per_beat: resolução do MIDI
+        expert_map:     {nota_expert: [easy, medium, hard, expert]} (alvo por nível)
+        chord_priority: callable(nota_expert) -> int (ordem de corte de acordes)
+
+    Notas fora de `expert_map` (ex.: kick 24) passam inalteradas, uma única vez.
+    Expert é idêntico à entrada; níveis inferiores são subconjuntos afinados.
+    """
+    import collections
+
+    out: List[Dict[str, Any]] = []
+    mapped = [n for n in notes if n["note"] in expert_map]
+    # passthrough: notas fora do mapa de dificuldade (kick, marcadores, etc.)
+    for n in notes:
+        if n["note"] not in expert_map:
+            out.append(n)
+
+    by_tick: Dict[int, List[Dict[str, Any]]] = collections.defaultdict(list)
+    for n in mapped:
+        by_tick[n["start_tick"]].append(n)
+    ticks = sorted(by_tick)
+
+    for di, gap_beats, max_chord in _DIFFICULTY_PARAMS:
+        min_gap = round(gap_beats * ticks_per_beat)
+        last = None
+        for tick in ticks:
+            if di < 3 and last is not None and (tick - last) < min_gap:
+                continue                      # afina: pula notas muito próximas
+            last = tick
+            chord = sorted(by_tick[tick], key=lambda n: chord_priority(n["note"]))
+            for n in chord[:max_chord]:       # simplifica acordes nos níveis baixos
+                out.append({**n, "note": expert_map[n["note"]][di]})
+    return out
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -158,45 +230,21 @@ def build_midi(wb: openpyxl.Workbook, out_path: Path) -> Dict[str, Any]:
 
         notes = read_track_sheet(wb[sheet_name])
 
-        # Drums: expande cada nota de pad para as 4 dificuldades Clone Hero.
-        # O modelo gera notas no range de anotação Rock Band (24–31); aqui
-        # convertemos para os ranges de gameplay reais antes de escrever o MIDI.
+        # Expansão por dificuldade com REDUÇÃO real (Easy < Medium < Hard < Expert).
+        # As notas vêm no range Expert; cada nível inferior é um subconjunto
+        # afinado (menos notas + acordes simplificados), como um chart de verdade —
+        # não uma cópia do Expert em outra faixa de notas. Ver _reduce_to_difficulties.
         if sheet_name == "drums":
-            expanded: List[Dict[str, Any]] = []
-            for n in notes:
-                targets = _DRUMS_PAD_TO_DIFFICULTIES.get(n["note"])
-                if targets:
-                    for midi_note in targets:
-                        expanded.append({**n, "note": midi_note})
-                else:
-                    expanded.append(n)   # Kick (24) e notas desconhecidas inalteradas
-            notes = expanded
+            notes = _reduce_to_difficulties(
+                notes, tpb, _DRUMS_PAD_TO_DIFFICULTIES, _drum_chord_priority)
 
-        # Rhythm / Bass: o modelo gera notas Expert (96-100); expandimos para
-        # as 4 dificuldades de forma que o chart seja jogável em qualquer nível.
         elif sheet_name == "rhythm":
-            expanded = []
-            for n in notes:
-                targets = _RHYTHM_FRET_TO_DIFFICULTIES.get(n["note"])
-                if targets:
-                    for midi_note in targets:
-                        expanded.append({**n, "note": midi_note})
-                else:
-                    expanded.append(n)   # notas fora do range Expert: inalteradas
-            notes = expanded
+            notes = _reduce_to_difficulties(
+                notes, tpb, _RHYTHM_FRET_TO_DIFFICULTIES, _fret_chord_priority)
 
-        # Guitar lead: mesma expansão do rhythm — modelo gera Expert 96-100,
-        # Clone Hero precisa das 4 dificuldades pra ser jogável.
         elif sheet_name == "guitar":
-            expanded = []
-            for n in notes:
-                targets = _GUITAR_FRET_TO_DIFFICULTIES.get(n["note"])
-                if targets:
-                    for midi_note in targets:
-                        expanded.append({**n, "note": midi_note})
-                else:
-                    expanded.append(n)
-            notes = expanded
+            notes = _reduce_to_difficulties(
+                notes, tpb, _GUITAR_FRET_TO_DIFFICULTIES, _fret_chord_priority)
 
         # Vocals (v1): o modelo gera onsets como nota MIDI 60. Não expandimos
         # — vocais no Clone Hero usam PART VOCALS com pitches reais, não por

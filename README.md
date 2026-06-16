@@ -9,10 +9,18 @@ música. A saída é uma pasta no formato Clone Hero — mapa de notas
 (`notes.mid`), áudios separados por instrumento, capa do álbum e metadados
 (`song.ini`) — pronta pra arrastar pra `<CloneHero>/Songs/` e jogar.
 
-O coração do projeto são **quatro modelos CRNN** (Convolutional Recurrent
-Neural Network), um por instrumento jogável: **drums**, **guitar**, **bass
-(rhythm)** e **vocals**. Cada modelo recebe o áudio isolado do seu
-instrumento e prediz o mapa de notas daquele canal.
+A geração das notas usa dois motores de inferência, escolhidos por instrumento:
+
+- **guitar / bass (rhythm) / vocals** → **basic-pitch** (modelo pré-treinado de
+  transcrição áudio→MIDI, backend ONNX). Os pitches transcritos viram frets do
+  Clone Hero por **contorno melódico** (a melodia sobe → fret mais alto); vocals
+  recebe os pitches reais cantados.
+- **drums** → modelo **CRNN** treinado (`DrumCRNN`), já que basic-pitch não
+  transcreve bateria.
+
+O `notes.mid` final é gerado com **redução real por dificuldade**
+(Easy < Medium < Hard < Expert) — cada nível inferior é um subconjunto afinado
+do Expert (menos notas + acordes simplificados), não uma cópia.
 
 ---
 
@@ -27,16 +35,16 @@ separa_audio.py  (Demucs htdemucs_6s)
       ▼
 drums.ogg, guitar.ogg, rhythm.ogg, vocals.ogg, song.ogg
       │
-      ├── drums.ogg  ──►  modelo drums   ──► aba 'drums'  ──┐
-      ├── guitar.ogg ──►  modelo guitar  ──► aba 'guitar' ──┤
-      ├── rhythm.ogg ──►  modelo bass    ──► aba 'rhythm' ──┤
-      └── vocals.ogg ──►  modelo vocals  ──► aba 'vocals' ──┘
+      ├── drums.ogg  ──►  CRNN (DrumCRNN) ──► aba 'drums'  ──┐
+      ├── guitar.ogg ──►  basic-pitch     ──► aba 'guitar' ──┤
+      ├── rhythm.ogg ──►  basic-pitch     ──► aba 'rhythm' ──┤
+      └── vocals.ogg ──►  basic-pitch     ──► aba 'vocals' ──┘
                                                               │
                                                               ▼
                                                   notes.xlsx consolidado
                                                               │
                                                               ▼
-                                              excel_to_midi.py → notes.mid
+                              excel_to_midi.py → notes.mid (4 dificuldades)
                                                               │
                                                               ▼
                                               song_ini.py     → song.ini

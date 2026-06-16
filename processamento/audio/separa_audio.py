@@ -82,11 +82,17 @@ def _mix_to_ogg(wav_paths: list[Path], ogg_path: Path, quality: int = 5) -> None
     subprocess.run(cmd, check=True)
 
 
-def _run_demucs(audio_path: Path, work_dir: Path) -> Path:
-    """Roda demucs e retorna a pasta com os stems WAV."""
+def _run_demucs(audio_path: Path, work_dir: Path) -> tuple[Path, str]:
+    """Roda demucs e retorna (pasta com stems, extensão dos arquivos gerados).
+
+    Usa --mp3 para que o demucs salve via lameenc (Python puro), evitando a
+    dependência de torchaudio/torchcodec que requer DLLs do FFmpeg shared no
+    Windows.  A conversão MP3→OGG é feita a seguir pelo ffmpeg.
+    """
     cmd = [
         "demucs",
         "-n", DEMUCS_MODEL,
+        "--mp3",            # usa lameenc em vez de torchaudio — sem DLL do FFmpeg
         "--out", str(work_dir),
         str(audio_path),
     ]
@@ -95,7 +101,9 @@ def _run_demucs(audio_path: Path, work_dir: Path) -> Path:
     stems_dir = work_dir / DEMUCS_MODEL / audio_path.stem
     if not stems_dir.is_dir():
         raise RuntimeError(f"Demucs não gerou a pasta esperada: {stems_dir}")
-    return stems_dir
+    # Com --mp3 os stems são .mp3; sem a flag seriam .wav
+    ext = ".mp3" if any(stems_dir.glob("*.mp3")) else ".wav"
+    return stems_dir, ext
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -139,11 +147,11 @@ def separate(audio_path: Path | str,
         tmp_dir = Path(tmp_ctx.name)
 
     try:
-        stems_dir = _run_demucs(audio_path, tmp_dir)
+        stems_dir, ext = _run_demucs(audio_path, tmp_dir)
 
         # 1) Stems individuais
         for stem, out_name in STEM_MAP.items():
-            src = stems_dir / f"{stem}.wav"
+            src = stems_dir / f"{stem}{ext}"
             if not src.exists():
                 log.warning("Stem ausente, ignorando: %s", src.name)
                 continue
@@ -151,8 +159,8 @@ def separate(audio_path: Path | str,
             log.info("✔ %s → %s", stem.upper(), out_name)
 
         # 2) Mixagem instrumental → song.ogg
-        wavs = [stems_dir / f"{s}.wav" for s in NON_VOCAL_STEMS
-                if (stems_dir / f"{s}.wav").exists()]
+        wavs = [stems_dir / f"{s}{ext}" for s in NON_VOCAL_STEMS
+                if (stems_dir / f"{s}{ext}").exists()]
         if not wavs:
             raise RuntimeError("Nenhum stem não-vocal disponível para mixar song.ogg.")
         _mix_to_ogg(wavs, out_song / "song.ogg", quality=quality)

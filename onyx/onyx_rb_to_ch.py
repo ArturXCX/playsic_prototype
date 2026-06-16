@@ -36,12 +36,21 @@ STFS_MAGIC = {b"CON ", b"LIVE", b"PIRS"}
 # Extensões Rock Band reconhecidas
 ROCK_BAND_EXTENSIONS = {".con", ".live", ".pkg", ".rba", ".rbproj"}
 
-# Pastas relativas à raiz do repo onde procurar o AppImage
-_DEFAULT_APPIMAGE_GLOBS = [
-    "onyx-*-linux-x64.AppImage",
-    "onyx-*.AppImage",
-    "*.AppImage",
-]
+# Globs por plataforma para localizar o binário Onyx em onyx/file/
+import sys as _sys
+if _sys.platform == "win32":
+    _DEFAULT_BINARY_GLOBS = [
+        "onyx-*-windows-x64.exe",
+        "onyx-*-win*.exe",
+        "onyx*.exe",
+        "*.exe",
+    ]
+else:
+    _DEFAULT_BINARY_GLOBS = [
+        "onyx-*-linux-x64.AppImage",
+        "onyx-*.AppImage",
+        "*.AppImage",
+    ]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -56,10 +65,11 @@ def _repo_root() -> Path:
     return here.parent  # fallback
 
 
-def _find_appimage(file_dir: Path) -> Optional[Path]:
+def _find_binary(file_dir: Path) -> Optional[Path]:
+    """Localiza o executável Onyx na pasta file_dir (multiplataforma)."""
     if not file_dir.is_dir():
         return None
-    for pat in _DEFAULT_APPIMAGE_GLOBS:
+    for pat in _DEFAULT_BINARY_GLOBS:
         matches = sorted(file_dir.glob(pat))
         if matches:
             return matches[-1]
@@ -141,20 +151,29 @@ def resolve_onyx_binary(hint: Optional[Path | str] = None,
             log.debug("Onyx resolvido: %s", c)
             return c
 
-    # nada encontrado → tenta extrair o AppImage
-    appimage = _find_appimage(root / "onyx" / "file")
-    if appimage is not None:
-        log.info("Extraindo AppImage: %s", appimage.name)
-        bin_path = _extract_appimage(appimage, extract_dir)
-        if bin_path is not None:
-            return bin_path
+    # nada encontrado → tenta encontrar/extrair na pasta onyx/file/
+    file_dir = root / "onyx" / "file"
+    binary = _find_binary(file_dir)
+    if binary is not None:
+        if _sys.platform == "win32":
+            # Windows: .exe direto, sem extração
+            log.info("Onyx Windows encontrado: %s", binary.name)
+            return binary
+        else:
+            # Linux: AppImage precisa ser extraído
+            log.info("Extraindo AppImage: %s", binary.name)
+            bin_path = _extract_appimage(binary, extract_dir)
+            if bin_path is not None:
+                return bin_path
 
     raise FileNotFoundError(
         "Não foi possível localizar o binário Onyx CLI.\n"
         "Opções:\n"
         "  • Defina $ONYX_CLI no ambiente.\n"
-        "  • Instale o `onyx` no PATH.\n"
-        f"  • Coloque o AppImage em {(root / 'onyx' / 'file')}/."
+        "  • Instale o `onyx` CLI no PATH.\n"
+        f"  • Coloque o binário em {file_dir}/\n"
+        "    Windows: onyx-*-windows-x64.exe  (baixe em github.com/mtolly/onyx/releases)\n"
+        "    Linux:   onyx-*-linux-x64.AppImage"
     )
 
 

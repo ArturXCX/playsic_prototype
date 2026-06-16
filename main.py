@@ -4,16 +4,18 @@ main.py — Pipeline principal do Playsic.
 Converte um arquivo de áudio num chart completo do Clone Hero.
 
 Uso:
-    python main.py --audio musica.mp3
+    python main.py --audio dados/exemplo/old_technology.mp3
     python main.py --audio musica.mp3 --bpm 120.0
 
 Fluxo:
     1. Demucs htdemucs_6s: separa stems → pasta de saída
     2. Extrai album.png dos metadados do áudio original
     3. Gera song.ini definitivo a partir das tags do áudio
-    4. Detecta modelos disponíveis (drums + rhythm); roda inferência em paralelo
+    4. Inferência por instrumento, em paralelo:
+         - guitar/bass/vocals → basic-pitch (transcrição, mapeada por contorno)
+         - drums              → CRNN treinado
     5. Consolida xlsx parciais → notes.xlsx unificado
-    6. Converte notes.xlsx → notes.mid
+    6. Converte notes.xlsx → notes.mid (com redução por dificuldade Easy→Expert)
     7. Chart em resultados/novas_musicas/charts/<nome>/
     8. Web preview em resultados/novas_musicas/previews/<nome>/
 """
@@ -26,6 +28,12 @@ import shutil
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+# Console robusto a UTF-8 (banners usam ━; cmd cp1252 quebraria)
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass
 
 # ── Paths do repositório ──────────────────────────────────────────────────────
 REPO_ROOT = Path(__file__).resolve().parent
@@ -70,6 +78,16 @@ INSTRUMENT_STEMS: Dict[str, str] = {
     "rhythm": "rhythm.ogg",
     "guitar": "guitar.ogg",
     "vocals": "vocals.ogg",
+}
+
+# Motor de inferência por instrumento:
+#   'basic_pitch' — transcrição via basic-pitch (instrumentos afinados; não usa checkpoint)
+#   'crnn'        — modelo CRNN treinado (drums: basic-pitch não transcreve bateria)
+INSTRUMENT_ENGINE: Dict[str, str] = {
+    "drums":  "crnn",
+    "rhythm": "basic_pitch",
+    "guitar": "basic_pitch",
+    "vocals": "basic_pitch",
 }
 
 CHARTS_DIR   = REPO_ROOT / "resultados" / "novas_musicas" / "charts"
@@ -170,18 +188,27 @@ def consolidate_xlsx(partial_xlsxes: List[Path], out_xlsx: Path) -> Path:
 # ─────────────────────────────────────────────────────────────────────────────
 # Inferência de um instrumento (executada em thread separada)
 # ─────────────────────────────────────────────────────────────────────────────
-def _infer_instrument(instrument: str, audio_path: Path, bpm: float,
-                      model_path: Path, meta_path: Path,
+def _infer_instrument(instrument: str, engine: str, audio_path: Path, bpm: float,
+                      model_path: Optional[Path], meta_path: Optional[Path],
                       out_xlsx: Path) -> Path:
-    import modelo_gera_excel  # importação tardia — evita carregar PyTorch em imports
-    modelo_gera_excel.infer(
-        audio_path=audio_path,
-        bpm=bpm,
-        instrument=instrument,
-        model_path=model_path,
-        meta_path=meta_path,
-        out_xlsx=out_xlsx,
-    )
+    if engine == "basic_pitch":
+        import transcreve_basic_pitch   # importação tardia (carrega onnxruntime)
+        transcreve_basic_pitch.transcribe(
+            audio_path=audio_path,
+            bpm=bpm,
+            instrument=instrument,
+            out_xlsx=out_xlsx,
+        )
+    else:  # crnn
+        import modelo_gera_excel         # importação tardia — evita carregar PyTorch em imports
+        modelo_gera_excel.infer(
+            audio_path=audio_path,
+            bpm=bpm,
+            instrument=instrument,
+            model_path=model_path,
+            meta_path=meta_path,
+            out_xlsx=out_xlsx,
+        )
     return out_xlsx
 
 
@@ -239,29 +266,37 @@ def run_pipeline(audio_path: Path, bpm: Optional[float] = None) -> Path:
     temp_dir = chart_dir / "_temp"
     temp_dir.mkdir(exist_ok=True)
 
-    active: List[Tuple[str, Path, Path]] = []
-    for instrument, (model_path, meta_path) in AVAILABLE_MODELS.items():
-        if model_path.exists() and meta_path.exists():
-            active.append((instrument, model_path, meta_path))
-            print(f"      Modelo disponível : {instrument}")
-        else:
-            print(f"      Modelo ausente (pulando): {instrument}")
+    # (instrument, engine, model_path|None, meta_path|None)
+    active: List[Tuple[str, str, Optional[Path], Optional[Path]]] = []
+    for instrument, engine in INSTRUMENT_ENGINE.items():
+        stem_name = INSTRUMENT_STEMS.get(instrument, f"{instrument}.ogg")
+        if not (chart_dir / stem_name).exists():
+            print(f"      Stem ausente (pulando): {instrument} ({stem_name})")
+            continue
+        if engine == "crnn":
+            model_path, meta_path = AVAILABLE_MODELS[instrument]
+            if not model_path.exists():
+                print(f"      CRNN sem checkpoint (pulando): {instrument}")
+                continue
+            extra = "" if meta_path.exists() else " (sem meta — normalização por-música)"
+            print(f"      {instrument}: CRNN{extra}")
+            active.append((instrument, engine, model_path, meta_path))
+        else:  # basic_pitch — não precisa de checkpoint
+            print(f"      {instrument}: basic-pitch (contorno)")
+            active.append((instrument, engine, None, None))
 
     partial_xlsxes: List[Path] = []
 
     if active:
         futures: Dict = {}
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            for instrument, model_path, meta_path in active:
+            for instrument, engine, model_path, meta_path in active:
                 stem_name  = INSTRUMENT_STEMS.get(instrument, f"{instrument}.ogg")
                 audio_stem = chart_dir / stem_name
-                if not audio_stem.exists():
-                    print(f"      [AVISO] {stem_name} não encontrado; pulando {instrument}")
-                    continue
-                out_xlsx = temp_dir / f"{instrument}.xlsx"
+                out_xlsx   = temp_dir / f"{instrument}.xlsx"
                 fut = executor.submit(
                     _infer_instrument,
-                    instrument, audio_stem, bpm,
+                    instrument, engine, audio_stem, bpm,
                     model_path, meta_path, out_xlsx,
                 )
                 futures[fut] = instrument
@@ -274,7 +309,7 @@ def run_pipeline(audio_path: Path, bpm: Optional[float] = None) -> Path:
             except Exception as exc:
                 print(f"      ✘ {instrument} falhou: {exc}")
     else:
-        print("      [AVISO] Nenhum modelo disponível. notes.mid não será gerado.")
+        print("      [AVISO] Nenhum instrumento disponível. notes.mid não será gerado.")
 
     # ── 5. Consolidar xlsx → notes.mid ────────────────────────────────────────
     if partial_xlsxes:

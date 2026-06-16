@@ -38,6 +38,7 @@ from notes_xlsx import (  # noqa: E402
 
 # ─── Defaults de treino ─────────────────────────────────────────────────────
 CHUNK_STEPS         = 512        # ≈ 32 beats
+CROPS_PER_SONG      = 6          # crops aleatórios por música/epoch (treino)
 AUG_PROB            = 0.5
 SPEC_AUG_FREQ_MASKS = 2
 SPEC_AUG_FREQ_WIDTH = 8
@@ -176,25 +177,34 @@ def spec_augment(mel: torch.Tensor,
 # Dataset PyTorch
 # ─────────────────────────────────────────────────────────────────────────────
 class DrumChartDataset(Dataset):
-    """Crop aleatório de `chunk_steps` por música. Sem vazamento entre splits."""
+    """Crops aleatórios de `chunk_steps` por música. Sem vazamento entre splits.
+
+    No treino (`augment=True`) cada música rende `crops_per_song` crops distintos
+    por epoch — sem isso, um dataset de N músicas dava só N gradient steps/epoch
+    (com chunk=512 ≈ 32 beats, a maior parte de cada música nunca era vista numa
+    dada epoch). Na validação (`augment=False`) mantém-se 1 crop por música para
+    métrica estável.
+    """
 
     def __init__(self, songs: List[SongData],
                  mel_mean: float, mel_std: float,
                  chunk_steps: int = CHUNK_STEPS,
                  augment: bool = False,
-                 aug_prob: float = AUG_PROB):
-        self.songs       = songs
-        self.mel_mean    = mel_mean
-        self.mel_std     = mel_std
-        self.chunk_steps = chunk_steps
-        self.augment     = augment
-        self.aug_prob    = aug_prob
+                 aug_prob: float = AUG_PROB,
+                 crops_per_song: int = CROPS_PER_SONG):
+        self.songs          = songs
+        self.mel_mean       = mel_mean
+        self.mel_std        = mel_std
+        self.chunk_steps    = chunk_steps
+        self.augment        = augment
+        self.aug_prob       = aug_prob
+        self.crops_per_song = crops_per_song if augment else 1
 
     def __len__(self):
-        return len(self.songs)
+        return len(self.songs) * self.crops_per_song
 
     def __getitem__(self, idx):
-        s = self.songs[idx]
+        s = self.songs[idx % len(self.songs)]
         mel, target, n = s.mel, s.target, s.n_steps
         if n > self.chunk_steps:
             start = random.randint(0, n - self.chunk_steps)

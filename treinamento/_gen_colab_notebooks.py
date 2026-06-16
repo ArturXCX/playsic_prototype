@@ -302,6 +302,25 @@ print(f"Meta    : {{META_PATH}}")
         "print(f\"N_LANES = {N_LANES}  ({LANE_NAMES})\")"
         if ins == "vocals" else ""
     )
+    # Adiciona  # type: ignore  aos imports locais para suprimir o aviso
+    # "reportMissingImports" do Pylance/pyright dentro do Colab.
+    # O código funciona normalmente — os módulos são adicionados ao sys.path
+    # na Célula 0 (git clone + sys.path.insert).
+    crnn_import_ti   = cfg["crnn_import"].rstrip()   + "  # type: ignore"
+    notes_import_ti  = cfg["notes_import"].rstrip()  + "  # type: ignore"
+    audio_import_ti  = (
+        "from audio_features import (  # type: ignore\n"
+        "    SAMPLE_RATE, SUBDIV_PER_BEAT, TICKS_PER_BEAT,\n"
+        "    audio_to_grid_mel, normalize_mel, step_duration_seconds,\n"
+        ")"
+    )
+    training_import_ti = (
+        "from training_utils import (  # type: ignore\n"
+        "    SongData, list_song_dirs, preprocess_song,\n"
+        "    compute_mel_stats, DrumChartDataset, CHUNK_STEPS,\n"
+        ")"
+    )
+
     code(nb, f"""\
 import math
 from tqdm.auto import tqdm
@@ -309,16 +328,10 @@ import matplotlib.pyplot as plt
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-{cfg['crnn_import']}
-{extra}from audio_features import (
-    SAMPLE_RATE, SUBDIV_PER_BEAT, TICKS_PER_BEAT,
-    audio_to_grid_mel, normalize_mel, step_duration_seconds,
-)
-{cfg['notes_import']}
-from training_utils import (
-    SongData, list_song_dirs, preprocess_song,
-    compute_mel_stats, DrumChartDataset, CHUNK_STEPS,
-){vocals_extra}
+{crnn_import_ti}
+{extra}{audio_import_ti}
+{notes_import_ti}
+{training_import_ti}{vocals_extra}
 """)
 
     # ── Célula 4: Pré-processamento ────────────────────────────────────────────
